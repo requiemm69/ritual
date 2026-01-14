@@ -1,110 +1,120 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <meta charset="UTF-8">
-  <title>•</title>
-  <style>body{margin:0;background:#000;cursor:pointer;user-select:none;overflow:hidden}</style>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+  <title>Капелла</title>
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      background: #000;
+      color: #000;
+      font-family: sans-serif;
+      overflow: hidden;
+      touch-action: none;
+    }
+    #enter {
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      padding: 16px 32px;
+      background: white;
+      border: none;
+      border-radius: 8px;
+      font-size: 18px;
+      cursor: pointer;
+      z-index: 10;
+    }
+    #chapel {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: 100vh;
+      background: white;
+      overflow: hidden;
+    }
+    .mist {
+      position: absolute;
+      background: rgba(0,0,0,0.03);
+      border-radius: 50%;
+      animation: float 15s infinite ease-in-out;
+      opacity: 0.7;
+    }
+    @keyframes float {
+      0%, 100% { transform: translate(0, 0); }
+      25% { transform: translate(10vw, -5vh); }
+      50% { transform: translate(-8vw, 8vh); }
+      75% { transform: translate(5vw, 10vh); }
+    }
+  </style>
 </head>
 <body>
-<script>
-// === МАГИЯ НАЧИНАЕТСЯ ПРИ КАСАНИИ ===
-const seed = Date.now();
-let active = false;
+  <button id="enter">Зайти в капеллу</button>
+  <div id="chapel"></div>
 
-function touch() {
-  if (active) return;
-  active = true;
-  document.body.innerHTML = '';
+  <script>
+    // === СКРЫТАЯ ЯМА ===
+    const pit = {
+      x: Math.random() * window.innerWidth,
+      y: Math.random() * window.innerHeight,
+      radius: 40 // пикселей
+    };
 
-  // === 1. АУДИОКОНТЕКСТ ===
-  const ctx = new (window.AudioContext || window.webkitAudioContext)();
-  ctx.resume();
+    function enterChapel() {
+      document.getElementById('enter').style.display = 'none';
+      const chapel = document.getElementById('chapel');
+      chapel.style.display = 'block';
 
-  // === 2. УНИКАЛЬНЫЙ ШУМ (на основе времени) ===
-  const bufferSize = 4096;
-  const noise = ctx.createScriptProcessor(bufferSize, 1, 1);
-  let last = 0;
-  let phase = 0;
+      // Создаём дымку
+      for (let i = 0; i < 12; i++) {
+        const mist = document.createElement('div');
+        mist.className = 'mist';
+        mist.style.width = `${20 + Math.random() * 80}vw`;
+        mist.style.height = `${20 + Math.random() * 80}vh`;
+        mist.style.left = `${Math.random() * 100}vw`;
+        mist.style.top = `${Math.random() * 100}vh`;
+        mist.style.animationDelay = `${Math.random() * 10}s`;
+        chapel.appendChild(mist);
+      }
 
-  noise.onaudioprocess = e => {
-    const out = e.outputBuffer.getChannelData(0);
-    for (let i = 0; i < bufferSize; i++) {
-      // Детерминированный "шум" через синус + фрактал
-      phase += 0.001 + (Math.sin(seed * 1e-9) * 1e-5);
-      last = Math.sin(phase * (1 + Math.sin(seed * 1e-10))) * 0.3;
-      out[i] = last;
+      // Обработка касаний
+      chapel.addEventListener('pointerdown', onTouch);
     }
-  };
 
-  // === 3. ФИЛЬТР-ДЫХАНИЕ ===
-  const lpf = ctx.createBiquadFilter();
-  lpf.type = 'lowpass';
-  lpf.frequency.value = 80 + (seed % 100);
-  lpf.Q.value = 0.5;
+    function onTouch(e) {
+      const x = e.clientX;
+      const y = e.clientY;
 
-  const lfo = ctx.createOscillator();
-  lfo.frequency.value = 0.07 + (seed * 1e-12);
-  lfo.connect(lpf.detune);
-  lfo.start();
+      // Расстояние до ямы
+      const dx = x - pit.x;
+      const dy = y - pit.y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
 
-  // === 4. РЕВЕРБЕРАЦИЯ БЕЗ ИМПУЛЬСА ===
-  const conv = ctx.createConvolver();
-  const irLength = ctx.sampleRate * 2;
-  const ir = ctx.createBuffer(1, irLength, ctx.sampleRate);
-  const irData = ir.getChannelData(0);
-  for (let i = 0; i < irLength; i++) {
-    irData[i] = (Math.random() * 2 - 1) * Math.exp(-i / (ctx.sampleRate * 0.8));
-  }
-  conv.buffer = ir;
+      // Макс. расстояние — диагональ экрана
+      const maxDist = Math.sqrt(window.innerWidth ** 2 + window.innerHeight ** 2);
+      const proximity = 1 - Math.min(1, dist / maxDist); // 0..1
 
-  // === 5. СБОРКА ===
-  const master = ctx.createGain();
-  master.gain.value = 0;
-  master.gain.linearRampToValueAtTime(0.4, ctx.currentTime + 1.5);
-  master.connect(ctx.destination);
-
-  noise.connect(lpf);
-  lpf.connect(conv);
-  conv.connect(master);
-
-  // === 6. ТАКТИЛЬНЫЙ ОТКЛИК ===
-  const haptic = () => {
-    // Telegram Mini App?
-    if (window.Telegram?.WebApp?.HapticFeedback) {
-      Telegram.WebApp.HapticFeedback.impactOccurred("heavy");
-      return true;
+      // Вибрация: чем ближе — тем сильнее
+      if (window.Telegram?.WebApp?.HapticFeedback) {
+        if (dist < pit.radius) {
+          // НАШЁЛ!
+          Telegram.WebApp.HapticFeedback.notificationOccurred("success");
+          alert("✨ ЯМА НАЙДЕНА!");
+        } else if (proximity > 0.7) {
+          Telegram.WebApp.HapticFeedback.impactOccurred("heavy");
+        } else if (proximity > 0.4) {
+          Telegram.WebApp.HapticFeedback.impactOccurred("medium");
+        } else {
+          Telegram.WebApp.HapticFeedback.impactOccurred("light");
+        }
+      }
     }
-    // Обычный браузер → низкочастотный импульс
-    if (navigator.vibrate) {
-      navigator.vibrate(200);
-      return true;
-    }
-    // Fallback: 30 Гц дрон на 300 мс
-    try {
-      const f = ctx.createOscillator(), g = ctx.createGain();
-      f.frequency.value = 30;
-      g.gain.value = 0.9;
-      f.connect(g);
-      g.connect(ctx.destination);
-      f.start();
-      f.stop(ctx.currentTime + 0.3);
-    } catch(e) {}
-    return false;
-  };
 
-  haptic();
-
-  // === 7. ЗАТУХАНИЕ ЧЕРЕЗ 25 СЕК ===
-  setTimeout(() => {
-    master.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 5);
-    if (window.Telegram?.WebApp?.HapticFeedback) {
-      Telegram.WebApp.HapticFeedback.notificationOccurred("success");
-    }
-  }, 25000);
-}
-
-// === ЗАПУСК ===
-['touchstart','mousedown','keydown'].forEach(e=>document.body.addEventListener(e, touch, {once:true}));
-</script>
+    document.getElementById('enter').addEventListener('click', enterChapel);
+  </script>
 </body>
 </html>
