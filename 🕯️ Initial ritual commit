@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>•</title>
+  <style>body{margin:0;background:#000;cursor:pointer;user-select:none;overflow:hidden}</style>
+</head>
+<body>
+<script>
+// === МАГИЯ НАЧИНАЕТСЯ ПРИ КАСАНИИ ===
+const seed = Date.now();
+let active = false;
+
+function touch() {
+  if (active) return;
+  active = true;
+  document.body.innerHTML = '';
+
+  // === 1. АУДИОКОНТЕКСТ ===
+  const ctx = new (window.AudioContext || window.webkitAudioContext)();
+  ctx.resume();
+
+  // === 2. УНИКАЛЬНЫЙ ШУМ (на основе времени) ===
+  const bufferSize = 4096;
+  const noise = ctx.createScriptProcessor(bufferSize, 1, 1);
+  let last = 0;
+  let phase = 0;
+
+  noise.onaudioprocess = e => {
+    const out = e.outputBuffer.getChannelData(0);
+    for (let i = 0; i < bufferSize; i++) {
+      // Детерминированный "шум" через синус + фрактал
+      phase += 0.001 + (Math.sin(seed * 1e-9) * 1e-5);
+      last = Math.sin(phase * (1 + Math.sin(seed * 1e-10))) * 0.3;
+      out[i] = last;
+    }
+  };
+
+  // === 3. ФИЛЬТР-ДЫХАНИЕ ===
+  const lpf = ctx.createBiquadFilter();
+  lpf.type = 'lowpass';
+  lpf.frequency.value = 80 + (seed % 100);
+  lpf.Q.value = 0.5;
+
+  const lfo = ctx.createOscillator();
+  lfo.frequency.value = 0.07 + (seed * 1e-12);
+  lfo.connect(lpf.detune);
+  lfo.start();
+
+  // === 4. РЕВЕРБЕРАЦИЯ БЕЗ ИМПУЛЬСА ===
+  const conv = ctx.createConvolver();
+  const irLength = ctx.sampleRate * 2;
+  const ir = ctx.createBuffer(1, irLength, ctx.sampleRate);
+  const irData = ir.getChannelData(0);
+  for (let i = 0; i < irLength; i++) {
+    irData[i] = (Math.random() * 2 - 1) * Math.exp(-i / (ctx.sampleRate * 0.8));
+  }
+  conv.buffer = ir;
+
+  // === 5. СБОРКА ===
+  const master = ctx.createGain();
+  master.gain.value = 0;
+  master.gain.linearRampToValueAtTime(0.4, ctx.currentTime + 1.5);
+  master.connect(ctx.destination);
+
+  noise.connect(lpf);
+  lpf.connect(conv);
+  conv.connect(master);
+
+  // === 6. ТАКТИЛЬНЫЙ ОТКЛИК ===
+  const haptic = () => {
+    // Telegram Mini App?
+    if (window.Telegram?.WebApp?.HapticFeedback) {
+      Telegram.WebApp.HapticFeedback.impactOccurred("heavy");
+      return true;
+    }
+    // Обычный браузер → низкочастотный импульс
+    if (navigator.vibrate) {
+      navigator.vibrate(200);
+      return true;
+    }
+    // Fallback: 30 Гц дрон на 300 мс
+    try {
+      const f = ctx.createOscillator(), g = ctx.createGain();
+      f.frequency.value = 30;
+      g.gain.value = 0.9;
+      f.connect(g);
+      g.connect(ctx.destination);
+      f.start();
+      f.stop(ctx.currentTime + 0.3);
+    } catch(e) {}
+    return false;
+  };
+
+  haptic();
+
+  // === 7. ЗАТУХАНИЕ ЧЕРЕЗ 25 СЕК ===
+  setTimeout(() => {
+    master.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 5);
+    if (window.Telegram?.WebApp?.HapticFeedback) {
+      Telegram.WebApp.HapticFeedback.notificationOccurred("success");
+    }
+  }, 25000);
+}
+
+// === ЗАПУСК ===
+['touchstart','mousedown','keydown'].forEach(e=>document.body.addEventListener(e, touch, {once:true}));
+</script>
+</body>
+</html>
