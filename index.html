@@ -15,8 +15,7 @@
       touch-action: none;
     }
 
-    /* ЗАГРУЗОЧНЫЙ ЭКРАН */
-    #loader {
+    #enter {
       position: fixed;
       top: 0; left: 0; width: 100%; height: 100%;
       background: #000;
@@ -24,37 +23,13 @@
       justify-content: center;
       align-items: center;
       z-index: 1000;
-      transition: opacity 0.8s ease;
+      cursor: pointer;
     }
-    #loader-text {
+    #enter-text {
       font-size: 18px;
       opacity: 0.7;
     }
 
-    /* КНОПКА ВХОДА */
-    #enter {
-      position: fixed;
-      top: 50%;
-      left: 50%;
-      transform: translate(-50%, -50%);
-      padding: 16px 32px;
-      background: white;
-      color: black;
-      border: none;
-      border-radius: 8px;
-      font-size: 18px;
-      cursor: pointer;
-      z-index: 999;
-      opacity: 0;
-      pointer-events: none;
-      transition: opacity 0.6s ease;
-    }
-    #enter.active {
-      opacity: 1;
-      pointer-events: auto;
-    }
-
-    /* КАПЕЛЛА */
     #chapel {
       position: fixed;
       top: 0; left: 0;
@@ -87,25 +62,165 @@
   </style>
 </head>
 <body>
-  <div id="loader">
-    <div id="loader-text">🕯️ Подготовка ритуального пространства...</div>
+  <div id="enter">
+    <div id="enter-text">🕯️ Коснись, чтобы войти в капеллу</div>
   </div>
-  <button id="enter">Зайти в капеллу</button>
   <div id="chapel"></div>
 
   <script>
     let audioContext = null;
     let oscillator = null;
     let gainNode = null;
+    let isHolding = false;
+    let hapticInterval = null;
 
-    // === СКРЫТАЯ ЯМА ===
     const pit = {
       x: Math.random() * window.innerWidth,
       y: Math.random() * window.innerHeight,
       radius: 40
     };
 
-    // === ИНИЦИАЛИЗАЦИЯ АУДИО ===
+    function initAudio() {
+      if (audioContext) return;
+      audioContext = new (window.AudioContext || window.webkitAudioContext)();
+    }
+
+    function updateTactileFeedback(x, y) {
+      const dx = x - pit.x;
+      dy = y - pit.y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      const maxDist = Math.sqrt(window.innerWidth ** 2 + window.innerHeight ** 2);
+      const proximity = 1 - Math.min(1, dist / maxDist);
+
+      // Вибрация (Telegram)
+      if (window.Telegram?.WebApp?.HapticFeedback && hapticInterval === null) {
+        hapticInterval = setInterval(() => {
+          if (!isHolding) return;
+          if (dist < pit.radius) {
+            Telegram.WebApp.HapticFeedback.notificationOccurred("success");
+            clearInterval(hapticInterval);
+            hapticInterval = null;
+            alert("✨ ЯМА НАЙДЕНА!");
+          } else if (proximity > 0.7) {
+            Telegram.WebApp.HapticFeedback.impactOccurred("heavy");
+          } else if (proximity > 0.4) {
+            Telegram.WebApp.HapticFeedback.impactOccurred("medium");
+          } else {
+            Telegram.WebApp.HapticFeedback.impactOccurred("light");
+          }
+        }, 200);
+      }
+
+      // Звук
+      if (!audioContext) initAudio();
+      if (audioContext.state === 'suspended') audioContext.resume();
+
+      if (oscillator) {
+        oscillator.stop();
+        oscillator = null;
+      }
+
+      if (dist < pit.radius) {
+        oscillator = audioContext.createOscillator();
+        gainNode = audioContext.createGain();
+        oscillator.type = 'sine';
+        oscillator.frequency.value = 80;
+        gainNode.gain.setValueAtTime(0.5, audioContext.currentTime);
+        gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.3);
+        oscillator.connect(gainNode);
+        gainNode.connect(audioContext.destination);
+        oscillator.start();
+        oscillator.stop(audioContext.currentTime + 0.3);
+        return;
+      }
+
+      const freq = 20 + (proximity * 40);
+      const volume = 0.1 + (proximity * 0.4);
+
+      oscillator = audioContext.createOscillator();
+      gainNode = audioContext.createGain();
+      oscillator.type = 'sine';
+      oscillator.frequency.value = freq;
+      gainNode.gain.value = volume;
+
+      oscillator.connect(gainNode);
+      gainNode.connect(audioContext.destination);
+      oscillator.start();
+
+      setTimeout(() => {
+        if (oscillator && isHolding) {
+          oscillator.stop();
+          oscillator = null;
+        }
+      }, 1000);
+    }
+
+    function startHold(e) {
+      if (isHolding) return;
+      isHolding = true;
+      const x = e.clientX || (e.touches && e.touches[0] ? e.touches[0].clientX : 0);
+      const y = e.clientY || (e.touches && e.touches[0] ? e.touches[0].clientY : 0);
+      updateTactileFeedback(x, y);
+    }
+
+    function moveHold(e) {
+      if (!isHolding) return;
+      e.preventDefault();
+      const x = e.clientX || (e.touches && e.touches[0] ? e.touches[0].clientX : 0);
+      const y = e.clientY || (e.touches && e.touches[0] ? e.touches[0].clientY : 0);
+      updateTactileFeedback(x, y);
+    }
+
+    function endHold() {
+      if (!isHolding) return;
+      isHolding = false;
+      if (hapticInterval) {
+        clearInterval(hapticInterval);
+        hapticInterval = null;
+      }
+      if (oscillator) {
+        oscillator.stop();
+        oscillator = null;
+      }
+    }
+
+    function enterChapel() {
+      const enterScreen = document.getElementById('enter');
+      const chapel = document.getElementById('chapel');
+
+      enterScreen.style.opacity = '0';
+      setTimeout(() => {
+        enterScreen.style.display = 'none';
+        chapel.classList.add('active');
+
+        // Создаём дымку
+        for (let i = 0; i < 15; i++) {
+          const mist = document.createElement('div');
+          mist.className = 'mist';
+          mist.style.width = `${20 + Math.random() * 80}vw`;
+          mist.style.height = `${20 + Math.random() * 80}vh`;
+          mist.style.left = `${Math.random() * 100}vw`;
+          mist.style.top = `${Math.random() * 100}vh`;
+          mist.style.animationDelay = `${Math.random() * 12}s`;
+          chapel.appendChild(mist);
+        }
+
+        // Слушаем касания
+        chapel.addEventListener('pointerdown', startHold);
+        chapel.addEventListener('pointermove', moveHold);
+        chapel.addEventListener('pointerup', endHold);
+        chapel.addEventListener('pointercancel', endHold);
+        chapel.addEventListener('touchstart', startHold);
+        chapel.addEventListener('touchmove', moveHold);
+        chapel.addEventListener('touchend', endHold);
+      }, 600);
+    }
+
+    document.getElementById('enter').addEventListener('pointerdown', enterChapel, { once: true });
+    document.getElementById('enter').addEventListener('touchstart', enterChapel, { once: true });
+  </script>
+</body>
+</html>    // === ИНИЦИАЛИЗАЦИЯ АУДИО ===
     function initAudio() {
       if (audioContext) return;
       audioContext = new (window.AudioContext || window.webkitAudioContext)();
