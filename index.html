@@ -1,105 +1,37 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
-  <title>Капелла</title>
-  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <title>BOND • Chapel</title>
+  <script src="https://telegram.org/js/telegram-web-app.js"></script> <!-- УБРАЛ ПРОБЕЛ -->
   <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
     body {
+      margin: 0;
       background: #000;
-      color: white;
-      font-family: sans-serif;
       overflow: hidden;
       touch-action: none;
+      cursor: pointer;
     }
-
-    #enter {
+    #screen {
       position: fixed;
       top: 0; left: 0; width: 100%; height: 100%;
-      background: #000;
       display: flex;
       justify-content: center;
       align-items: center;
-      z-index: 1000;
-      cursor: pointer;
-    }
-    #enter-text {
-      font-size: 18px;
-      opacity: 0.7;
-    }
-
-    #chapel {
-      position: fixed;
-      top: 0; left: 0;
-      width: 100vw;
-      height: 100vh;
-      background: white;
-      overflow: hidden;
-      opacity: 0;
-      pointer-events: none;
-      transition: opacity 1.2s ease;
-    }
-    #chapel.active {
+      color: white;
+      font-family: monospace;
       opacity: 1;
-      pointer-events: auto;
+      transition: opacity 1s ease;
     }
-
-    .mist {
-      position: absolute;
-      background: rgba(0,0,0,0.03);
-      border-radius: 50%;
-      animation: float 15s infinite ease-in-out;
-      opacity: 0.7;
-    }
-    @keyframes float {
-      0%, 100% { transform: translate(0, 0); }
-      25% { transform: translate(10vw, -5vh); }
-      50% { transform: translate(-8vw, 8vh); }
-      75% { transform: translate(5vw, 10vh); }
-    }
+    #screen.hidden { opacity: 0; pointer-events: none; }
   </style>
 </head>
 <body>
-  <div id="enter">
-    <div id="enter-text">🕯️ Коснись, чтобы войти в капеллу</div>
-  </div>
-  <div id="chapel"></div>
-
-  <script>
-    let audioContext = null;
-    let oscillator = null;
-    let gainNode = null;
-    let isHolding = false;
-    let hapticInterval = null;
-
-    const pit = {
-      x: Math.random() * window.innerWidth,
-      y: Math.random() * window.innerHeight,
-      radius: 40
-    };
-
-    function initAudio() {
-      if (audioContext) return;
-      audioContext = new (window.AudioContext || window.webkitAudioContext)();
-    }
-
-    function updateTactileFeedback(x, y) {
-      const dx = x - pit.x;
-      dy = y - pit.y;
-      const dist = Math.sqrt(dx * dx + dy * dy);
-      const maxDist = Math.sqrt(window.innerWidth ** 2 + window.innerHeight ** 2);
-      const proximity = 1 - Math.min(1, dist / maxDist);
-
-      // Вибрация (Telegram)
-      if (window.Telegram?.WebApp?.HapticFeedback && hapticInterval === null) {
-        hapticInterval = setInterval(() => {
-          if (!isHolding) return;
-          if (dist < pit.radius) {
-            Telegram.WebApp.HapticFeedback.notificationOccurred("success");
-            clearInterval(hapticInterval);
-            hapticInterval = null;
+  <div id="screen">🕯️ Enter the Chapel</div>
+  <script src="client.js"></script>
+</body>
+</html>            hapticInterval = null;
             alert("✨ ЯМА НАЙДЕНА!");
           } else if (proximity > 0.7) {
             Telegram.WebApp.HapticFeedback.impactOccurred("heavy");
