@@ -9,11 +9,29 @@
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body {
       background: #000;
-      color: #000;
+      color: white;
       font-family: sans-serif;
       overflow: hidden;
       touch-action: none;
     }
+
+    /* ЗАГРУЗОЧНЫЙ ЭКРАН */
+    #loader {
+      position: fixed;
+      top: 0; left: 0; width: 100%; height: 100%;
+      background: #000;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      z-index: 1000;
+      transition: opacity 0.8s ease;
+    }
+    #loader-text {
+      font-size: 18px;
+      opacity: 0.7;
+    }
+
+    /* КНОПКА ВХОДА */
     #enter {
       position: fixed;
       top: 50%;
@@ -21,22 +39,38 @@
       transform: translate(-50%, -50%);
       padding: 16px 32px;
       background: white;
+      color: black;
       border: none;
       border-radius: 8px;
       font-size: 18px;
       cursor: pointer;
-      z-index: 10;
+      z-index: 999;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.6s ease;
     }
+    #enter.active {
+      opacity: 1;
+      pointer-events: auto;
+    }
+
+    /* КАПЕЛЛА */
     #chapel {
-      display: none;
       position: fixed;
-      top: 0;
-      left: 0;
+      top: 0; left: 0;
       width: 100vw;
       height: 100vh;
       background: white;
       overflow: hidden;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 1.2s ease;
     }
+    #chapel.active {
+      opacity: 1;
+      pointer-events: auto;
+    }
+
     .mist {
       position: absolute;
       background: rgba(0,0,0,0.03);
@@ -53,53 +87,155 @@
   </style>
 </head>
 <body>
+  <div id="loader">
+    <div id="loader-text">🕯️ Подготовка ритуального пространства...</div>
+  </div>
   <button id="enter">Зайти в капеллу</button>
   <div id="chapel"></div>
 
   <script>
+    let audioContext = null;
+    let oscillator = null;
+    let gainNode = null;
+
     // === СКРЫТАЯ ЯМА ===
     const pit = {
       x: Math.random() * window.innerWidth,
       y: Math.random() * window.innerHeight,
-      radius: 40 // пикселей
+      radius: 40
     };
 
-    function enterChapel() {
-      document.getElementById('enter').style.display = 'none';
-      const chapel = document.getElementById('chapel');
-      chapel.style.display = 'block';
+    // === ИНИЦИАЛИЗАЦИЯ АУДИО ===
+    function initAudio() {
+      if (audioContext) return;
+      audioContext = new (window.AudioContext || window.webkitAudioContext)();
+    }
 
-      // Создаём дымку
-      for (let i = 0; i < 12; i++) {
+    // === ТАКТИЛЬНЫЙ ЗВУК ===
+    function playTactileSound(proximity, found = false) {
+      if (!audioContext) initAudio();
+      if (audioContext.state === 'suspended') audioContext.resume();
+
+      if (oscillator) {
+        oscillator.stop();
+        oscillator = null;
+      }
+
+      if (found) {
+        oscillator = audioContext.createOscillator();
+        gainNode = audioContext.createGain();
+        oscillator.type = 'sine';
+        oscillator.frequency.value = 80;
+        gainNode.gain.setValueAtTime(0.5, audioContext.currentTime);
+        gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.3);
+        oscillator.connect(gainNode);
+        gainNode.connect(audioContext.destination);
+        oscillator.start();
+        oscillator.stop(audioContext.currentTime + 0.3);
+        return;
+      }
+
+      const freq = 20 + (proximity * 40);
+      const volume = 0.1 + (proximity * 0.4);
+
+      oscillator = audioContext.createOscillator();
+      gainNode = audioContext.createGain();
+      oscillator.type = 'sine';
+      oscillator.frequency.value = freq;
+      gainNode.gain.value = volume;
+
+      oscillator.connect(gainNode);
+      gainNode.connect(audioContext.destination);
+      oscillator.start();
+
+      setTimeout(() => {
+        if (oscillator) {
+          oscillator.stop();
+          oscillator = null;
+        }
+      }, 1500);
+    }
+
+    // === СОЗДАНИЕ ДЫМКИ ===
+    function createMist(chapel) {
+      for (let i = 0; i < 15; i++) {
         const mist = document.createElement('div');
         mist.className = 'mist';
         mist.style.width = `${20 + Math.random() * 80}vw`;
         mist.style.height = `${20 + Math.random() * 80}vh`;
         mist.style.left = `${Math.random() * 100}vw`;
         mist.style.top = `${Math.random() * 100}vh`;
-        mist.style.animationDelay = `${Math.random() * 10}s`;
+        mist.style.animationDelay = `${Math.random() * 12}s`;
         chapel.appendChild(mist);
       }
-
-      // Обработка касаний
-      chapel.addEventListener('pointerdown', onTouch);
     }
 
+    // === ПОГРУЖЕНИЕ В КАПЕЛЛУ ===
+    function enterChapel() {
+      const loader = document.getElementById('loader');
+      const enterBtn = document.getElementById('enter');
+      const chapel = document.getElementById('chapel');
+
+      // Скрыть кнопку и загрузчик
+      enterBtn.classList.remove('active');
+      loader.style.opacity = '0';
+
+      // Подождать, пока исчезнет загрузчик
+      setTimeout(() => {
+        loader.style.display = 'none';
+        chapel.classList.add('active');
+        createMist(chapel);
+        chapel.addEventListener('pointerdown', onTouch);
+      }, 800);
+    }
+
+    // === ОБРАБОТКА КАСАНИЙ ===
     function onTouch(e) {
       const x = e.clientX;
       const y = e.clientY;
-
-      // Расстояние до ямы
       const dx = x - pit.x;
       const dy = y - pit.y;
       const dist = Math.sqrt(dx * dx + dy * dy);
-
-      // Макс. расстояние — диагональ экрана
       const maxDist = Math.sqrt(window.innerWidth ** 2 + window.innerHeight ** 2);
-      const proximity = 1 - Math.min(1, dist / maxDist); // 0..1
+      const proximity = 1 - Math.min(1, dist / maxDist);
 
-      // Вибрация: чем ближе — тем сильнее
+      // Haptic (если в Telegram)
       if (window.Telegram?.WebApp?.HapticFeedback) {
+        if (dist < pit.radius) {
+          Telegram.WebApp.HapticFeedback.notificationOccurred("success");
+        } else if (proximity > 0.7) {
+          Telegram.WebApp.HapticFeedback.impactOccurred("heavy");
+        } else if (proximity > 0.4) {
+          Telegram.WebApp.HapticFeedback.impactOccurred("medium");
+        } else {
+          Telegram.WebApp.HapticFeedback.impactOccurred("light");
+        }
+      }
+
+      // Звук
+      if (dist < pit.radius) {
+        playTactileSound(1, true);
+        alert("✨ ЯМА НАЙДЕНА!");
+      } else {
+        playTactileSound(proximity);
+      }
+    }
+
+    // === ЗАГРУЗКА ЗАВЕРШЕНА ===
+    window.addEventListener('load', () => {
+      setTimeout(() => {
+        document.getElementById('loader').style.opacity = '0';
+        setTimeout(() => {
+          document.getElementById('loader').style.display = 'none';
+          document.getElementById('enter').classList.add('active');
+        }, 800);
+      }, 800); // имитация "прогрузки"
+    });
+
+    document.getElementById('enter').addEventListener('click', enterChapel);
+  </script>
+</body>
+</html>      if (window.Telegram?.WebApp?.HapticFeedback) {
         if (dist < pit.radius) {
           // НАШЁЛ!
           Telegram.WebApp.HapticFeedback.notificationOccurred("success");
